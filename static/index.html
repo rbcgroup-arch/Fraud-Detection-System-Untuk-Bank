@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Fraud Detection Dashboard</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Hackathon MVP</p>
+          <h1>Fraud Detection System untuk Bank</h1>
+          <p class="hero-copy">
+            Simulasi transfer, analisis pola transaksi, risk scoring, dan fraud
+            alert real-time dalam satu dashboard.
+          </p>
+        </div>
+        <div class="hero-actions">
+          <button id="seed-demo-btn" class="button button-primary">Seed Demo</button>
+          <button id="normal-tx-btn" class="button">Generate Normal</button>
+          <button id="fraud-tx-btn" class="button button-danger">Generate Suspicious</button>
+          <button id="live-toggle-btn" class="button button-secondary">Start Live Simulation</button>
+        </div>
+      </header>
+
+      <section class="stats-grid" id="stats-grid">
+        <article class="card stat-card">
+          <span>Total Transactions</span>
+          <strong id="total-transactions">0</strong>
+        </article>
+        <article class="card stat-card">
+          <span>Suspicious Transactions</span>
+          <strong id="suspicious-transactions">0</strong>
+        </article>
+        <article class="card stat-card">
+          <span>High Risk Alerts</span>
+          <strong id="high-risk-alerts">0</strong>
+        </article>
+        <article class="card stat-card">
+          <span>Fraud Rate</span>
+          <strong id="fraud-rate">0%</strong>
+        </article>
+      </section>
+
+      <section class="layout-grid">
+        <article class="card form-card">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Transaction Simulator</p>
+              <h2>Submit Manual Transfer</h2>
+            </div>
+          </div>
+
+          <form id="transaction-form" class="transaction-form">
+            <label>
+              User
+              <select name="user_id" id="user-select"></select>
+            </label>
+            <label>
+              Destination Bank
+              <input name="destination_bank" value="BCA" required />
+            </label>
+            <label>
+              Destination Account
+              <input name="destination_account" value="982001111" required />
+            </label>
+            <label>
+              Amount
+              <input name="amount" type="number" min="1000" step="1000" value="500000" required />
+            </label>
+            <label>
+              Device ID
+              <input name="device_id" value="android-ayu-001" required />
+            </label>
+            <label>
+              IP Address
+              <input name="ip_address" value="10.10.1.10" required />
+            </label>
+            <label>
+              Location City
+              <input name="location_city" value="Jakarta" required />
+            </label>
+            <label>
+              Timestamp
+              <input name="timestamp" type="datetime-local" required />
+            </label>
+            <button type="submit" class="button button-primary">Analyze Transaction</button>
+          </form>
+        </article>
+
+        <article class="card">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Risk Monitor</p>
+              <h2>Recent Alerts</h2>
+            </div>
+          </div>
+          <div id="alerts-list" class="alerts-list"></div>
+        </article>
+      </section>
+
+      <section class="layout-grid">
+        <article class="card">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Risk Distribution</p>
+              <h2>Portfolio Snapshot</h2>
+            </div>
+          </div>
+          <div id="risk-bars" class="risk-bars"></div>
+        </article>
+
+        <article class="card">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Decision Support</p>
+              <h2>Top Fraud Reasons</h2>
+            </div>
+          </div>
+          <div id="reasons-list" class="reason-list"></div>
+        </article>
+      </section>
+
+      <section class="card">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Monitoring</p>
+            <h2>Latest Transactions</h2>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>User</th>
+                <th>Destination</th>
+                <th>Amount</th>
+                <th>Risk</th>
+                <th>Alert</th>
+                <th>Reasons</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="transactions-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <div id="toast" class="toast hidden"></div>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

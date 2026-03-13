@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+    font-family:
+      "Space Grotesk",
+      "Segoe UI",
+      sans-serif;
+  }
+
+  body {
+    @apply m-0 bg-slate-950 text-slate-50 antialiased;
+  }
+
+  * {
+    @apply box-border;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply rounded-[24px] border border-white/10 bg-panel/90 shadow-panel backdrop-blur;
+  }
+
+  .panel-soft {
+    @apply rounded-[20px] border border-white/10 bg-panelSoft/80;
+  }
+
+  .field {
+    @apply min-h-[52px] w-full rounded-2xl border border-white/10 bg-slate-950/50 px-4 py-3 text-sm text-white outline-none transition focus:border-info;
+  }
+
+  .button-primary {
+    @apply rounded-2xl bg-white px-4 py-3 text-sm font-bold text-slate-950 transition hover:bg-slate-200;
+  }
+
+  .button-secondary {
+    @apply rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10;
+  }
+
+  .button-danger {
+    @apply rounded-2xl bg-danger px-4 py-3 text-sm font-semibold text-white transition hover:bg-red-400;
+  }
+}
