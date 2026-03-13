@@ -38,13 +38,28 @@ Dashboard React / Simulator
        SQLite Database
 ```
 
-Alur sistem:
+Alur sistem tingkat tinggi:
 
 1. Dashboard atau simulator mengirim transaksi ke backend.
 2. FastAPI mengambil histori transaksi pengguna dari SQLite.
 3. Fraud engine membangun fitur perilaku dan menghitung sinyal anomali.
 4. Backend menggabungkan `ml_score` dan `rule_score` menjadi `risk_score`.
 5. Sistem menyimpan transaksi, membuat alert bila perlu, lalu mengirim hasil ke dashboard.
+
+## Alur Sistem Lengkap
+
+Berikut alur lengkap yang terjadi ketika sebuah transaksi masuk ke sistem:
+
+1. Pengguna atau simulator mengirim transaksi melalui form pada dashboard atau halaman simulate.
+2. FastAPI menerima request transaksi melalui endpoint `POST /api/transactions/simulate`.
+3. Backend menyimpan payload transaksi dan mengambil histori transaksi pengguna terkait.
+4. Fraud engine membangun fitur perilaku seperti rata-rata nominal, jam transaksi normal, device yang dikenal, rekening tujuan yang pernah digunakan, dan frekuensi transaksi terbaru.
+5. Rule-based engine mengevaluasi kondisi fraud yang mudah dijelaskan, misalnya nominal terlalu besar, device baru, rekening tujuan baru, atau transaksi pada jam tidak biasa.
+6. Model `IsolationForest` menghitung anomaly score berdasarkan perilaku historis pengguna.
+7. Backend menggabungkan hasil rule engine dan model anomaly detection menjadi `risk_score` akhir.
+8. Jika skor melewati ambang batas, sistem membuat alert dan menyimpannya ke tabel `alerts`.
+9. Dashboard menampilkan status transaksi, reason summary, risk badge, dan queue alert untuk investigasi.
+10. Analyst atau juri demo dapat membuka detail alert, membaca baseline pengguna, lalu melakukan aksi `Review`, `Safe`, atau `Block`.
 
 ## Fitur Utama
 
@@ -297,11 +312,17 @@ requirements.txt
 
 ## Screenshot
 
-Disarankan menambahkan screenshot berikut pada repository:
+### Dashboard Monitoring
 
-- Dashboard monitoring
-- Halaman review alert
-- Halaman simulate transaction
+![Dashboard Monitoring](docs/images/dashboard.png)
+
+### Alert Review
+
+![Alert Review](docs/images/alerts.png)
+
+### Simulate Transaction
+
+![Simulate Transaction](docs/images/simulate.png)
 
 ## Pengembangan Lanjutan
 
