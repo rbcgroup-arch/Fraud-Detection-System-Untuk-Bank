@@ -42,6 +42,11 @@ export const api = {
       body: JSON.stringify(payload),
     });
   },
+  generateRandomTransaction(suspicious = false) {
+    return request(`/demo/random?suspicious=${suspicious ? "true" : "false"}`, {
+      method: "POST",
+    });
+  },
   updateAlertStatus(alertId, status) {
     return request(`/alerts/${alertId}/status`, {
       method: "POST",
