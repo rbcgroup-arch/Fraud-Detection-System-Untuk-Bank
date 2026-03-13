@@ -1,21 +1,32 @@
-# Fraud Detection System for Banking Transactions
+# Fraud Detection System untuk Transaksi Perbankan
 
-A hackathon MVP that detects suspicious banking transactions using a hybrid approach combining rule-based heuristics and machine learning anomaly detection.
+Fraud Detection System adalah MVP hackathon untuk mendeteksi transaksi perbankan yang mencurigakan melalui kombinasi rule-based scoring dan machine learning anomaly detection.
 
-The system builds behavioral baselines per user, evaluates incoming transactions in near real-time, and surfaces risk alerts in a monitoring dashboard for investigation and review.
+Sistem ini membangun baseline perilaku setiap pengguna, mengevaluasi transaksi yang masuk secara cepat, lalu menampilkan skor risiko, alasan deteksi, dan alert investigasi melalui dashboard monitoring.
 
-## Stack
+## Ringkasan
+
+Proyek ini dirancang untuk menunjukkan alur fraud monitoring end-to-end:
+
+- simulasi transaksi normal dan mencurigakan
+- analisis pola transaksi per pengguna
+- anomaly detection berbasis `IsolationForest`
+- perhitungan `risk score` yang dapat dijelaskan
+- alert review dengan aksi `open`, `review`, `blocked`, dan `resolved`
+- dashboard monitoring untuk kebutuhan demo dan investigasi
+
+## Teknologi
 
 - Backend: FastAPI
 - Database: SQLite
 - AI/ML: pandas, scikit-learn, numpy
-- Frontend: React, Tailwind CSS, Recharts
-- Fallback UI: HTML, CSS, vanilla JavaScript
+- Frontend utama: React, Tailwind CSS, Recharts
+- Frontend cadangan: HTML, CSS, vanilla JavaScript
 
-## System Architecture
+## Arsitektur Sistem
 
 ```text
-React Dashboard / Simulator
+Dashboard React / Simulator
             |
             v
        FastAPI Backend
@@ -27,56 +38,56 @@ React Dashboard / Simulator
        SQLite Database
 ```
 
-System flow:
+Alur sistem:
 
-1. The React dashboard or simulator submits a transaction.
-2. FastAPI retrieves recent user history from SQLite.
-3. The fraud detection engine computes behavioral features and anomaly signals.
-4. The backend combines ML score and rule score into a final risk score.
-5. The system stores transactions and alerts, then returns the result to the dashboard.
+1. Dashboard atau simulator mengirim transaksi ke backend.
+2. FastAPI mengambil histori transaksi pengguna dari SQLite.
+3. Fraud engine membangun fitur perilaku dan menghitung sinyal anomali.
+4. Backend menggabungkan `ml_score` dan `rule_score` menjadi `risk_score`.
+5. Sistem menyimpan transaksi, membuat alert bila perlu, lalu mengirim hasil ke dashboard.
 
-## Features
+## Fitur Utama
 
-- Manual transaction simulation
-- Auto simulation for normal and suspicious scenarios
-- Live demo transaction stream on the simulate page
-- Behavioral baseline per user
-- Anomaly detection with `IsolationForest`
+- Simulasi transaksi manual
+- Simulasi transaksi otomatis untuk skenario normal dan fraud
+- Live demo transaction stream pada halaman simulate
+- Baseline perilaku pengguna
+- Deteksi anomali berbasis `IsolationForest`
 - Rule-based fraud scoring
-- Risk score `0-100`
-- Explainable fraud reasons
-- Alert queue with `open`, `review`, `blocked`, and `resolved` statuses
-- Monitoring dashboard with charts and recent activity
+- `Risk score` dalam rentang `0-100`
+- Alasan fraud yang dapat dijelaskan
+- Alert queue dengan workflow review
+- Dashboard monitoring dengan chart dan recent activity
 
-## Single Server Demo Mode
+## Mode Demo Satu Server
 
-The project runs in a single-server demo mode:
+Proyek ini mendukung mode demo satu server:
 
-- FastAPI serves all `/api/...` endpoints
-- FastAPI also serves the built React frontend from `frontend/dist`
-- Routes such as `/`, `/simulate`, and `/alerts` resolve directly through the same server
+- FastAPI melayani seluruh endpoint `/api/...`
+- FastAPI juga melayani build React dari `frontend/dist`
+- route seperti `/`, `/simulate`, dan `/alerts` langsung disajikan dari server yang sama
 
-If `frontend/dist` is not available, the project falls back to the static dashboard in `static/index.html`.
+Jika `frontend/dist` belum tersedia, aplikasi akan fallback ke dashboard statis pada `static/index.html`.
 
-## Risk Engine
+## Mesin Risiko
 
-### Rule-Based Layer
+### Rule-Based Scoring
 
-The rule engine increases risk based on behavior shifts such as:
+Rule engine menambahkan risiko berdasarkan perubahan perilaku seperti:
 
-- amount significantly above user average
-- amount above historical maximum
-- unusual transaction hour
-- new device
-- new destination account
-- sudden transaction velocity increase
-- location mismatch with the user's primary city
+- nominal jauh di atas rata-rata pengguna
+- nominal melampaui maksimum historis
+- transaksi pada jam yang tidak biasa
+- perangkat baru
+- rekening tujuan baru
+- lonjakan frekuensi transaksi
+- lokasi berbeda dari kota utama pengguna
 
-`rule_score` is capped at `30`.
+`rule_score` dibatasi hingga `30`.
 
-### ML Anomaly Detection
+### Machine Learning Anomaly Detection
 
-`IsolationForest` learns a user's normal transaction behavior from historical records. The feature vector includes:
+`IsolationForest` digunakan untuk mempelajari pola transaksi normal berdasarkan histori pengguna. Fitur yang dipakai antara lain:
 
 - `amount`
 - `hour_of_day`
@@ -90,23 +101,23 @@ The rule engine increases risk based on behavior shifts such as:
 - `max_amount_user`
 - `destination_frequency`
 
-`ml_score` is capped at `0-70`.
+`ml_score` dibatasi pada rentang `0-70`.
 
-### Final Risk Score
+### Formula Skor Akhir
 
 ```text
 final_risk_score = min(100, ml_score + rule_score)
 ```
 
-Risk categories:
+Kategori risiko:
 
 - `0-29` = `normal`
 - `30-59` = `suspicious`
 - `60-100` = `high`
 
-## Database Schema
+## Skema Database
 
-### `users`
+### Tabel `users`
 
 - `id`
 - `name`
@@ -115,7 +126,7 @@ Risk categories:
 - `usual_city`
 - `created_at`
 
-### `transactions`
+### Tabel `transactions`
 
 - `id`
 - `user_id`
@@ -136,7 +147,7 @@ Risk categories:
 - `feature_snapshot`
 - `created_at`
 
-### `alerts`
+### Tabel `alerts`
 
 - `id`
 - `transaction_id`
@@ -144,9 +155,9 @@ Risk categories:
 - `status`
 - `created_at`
 
-## API Endpoints
+## Endpoint API
 
-The main backend contract is defined with Pydantic schemas in `app/schemas.py`.
+Kontrak utama backend didefinisikan di `app/schemas.py`.
 
 - `POST /api/transactions/simulate`
 - `GET /api/alerts`
@@ -160,9 +171,7 @@ The main backend contract is defined with Pydantic schemas in `app/schemas.py`.
 - `POST /api/demo/reset`
 - `POST /api/demo/random?suspicious=true`
 
-### `POST /api/transactions/simulate`
-
-Example request:
+### Contoh Request `POST /api/transactions/simulate`
 
 ```json
 {
@@ -178,7 +187,7 @@ Example request:
 }
 ```
 
-Example response:
+### Contoh Response
 
 ```json
 {
@@ -195,29 +204,29 @@ Example response:
 }
 ```
 
-## Demo Dataset Reset
+## Reset Dataset Demo
 
-Use the reset endpoint to restore a deterministic demo-ready dataset:
+Gunakan endpoint berikut untuk mengembalikan dataset demo ke kondisi presentasi yang konsisten:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/api/demo/reset
 ```
 
-The reset dataset includes:
+Dataset reset mencakup:
 
-- multiple `open` alerts
-- one `review` alert
-- one `blocked` alert
-- one `resolved` alert
-- at least one `high risk` alert
+- beberapa alert `open`
+- satu alert `review`
+- satu alert `blocked`
+- satu alert `resolved`
+- minimal satu alert `high risk`
 
-If you want a local backup snapshot for presentation:
+Jika diperlukan backup lokal untuk presentasi:
 
 ```bash
 cp data/fraud.db data/fraud-demo-snapshot.db
 ```
 
-## Running the Project
+## Menjalankan Proyek
 
 ### Backend
 
@@ -228,7 +237,7 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-Open `http://127.0.0.1:8000`.
+Buka `http://127.0.0.1:8000`.
 
 ### Frontend Development
 
@@ -238,9 +247,9 @@ npm install
 npm run dev
 ```
 
-The React frontend runs on `http://127.0.0.1:5173` and proxies API requests to FastAPI.
+Frontend React berjalan di `http://127.0.0.1:5173` dan akan melakukan proxy ke backend FastAPI.
 
-### Single Server Demo
+### Mode Demo Tunggal
 
 ```bash
 python -m venv .venv
@@ -253,9 +262,9 @@ cd ..
 uvicorn app.main:app --reload
 ```
 
-After `frontend/dist` is created, FastAPI serves the React build directly from `http://127.0.0.1:8000`.
+Setelah `frontend/dist` terbentuk, FastAPI akan langsung menyajikan hasil build React dari server yang sama.
 
-## Project Structure
+## Struktur Proyek
 
 ```text
 app/
@@ -277,38 +286,38 @@ static/
 requirements.txt
 ```
 
-## Screenshots
-
-Suggested repository screenshots:
-
-- Dashboard monitoring overview
-- Alert review page with baseline comparison
-- Transaction simulation page with live demo controls
-
 ## Demo Workflow
 
-1. Reset the demo dataset.
-2. Observe normal transaction patterns on the dashboard.
-3. Generate a suspicious transaction manually or through the live demo controls.
-4. Review the generated risk score and fraud reasons.
-5. Investigate the alert in the monitoring dashboard.
-6. Mark the transaction as `Safe`, `Review`, or `Block`.
+1. Reset dataset demo.
+2. Tampilkan pola transaksi normal pada dashboard.
+3. Buat transaksi mencurigakan secara manual atau melalui live demo.
+4. Tinjau `risk score` dan alasan fraud yang dihasilkan.
+5. Investigasi alert pada halaman monitoring.
+6. Ubah status alert menjadi `Safe`, `Review`, atau `Block`.
 
-## Future Improvements
+## Screenshot
 
-- Integrate real banking transaction streams
-- Replace SQLite with PostgreSQL
-- Add model retraining and feature drift monitoring
-- Implement role-based access control
-- Add richer explainability visualizations for anomaly detection
-- Introduce WebSocket-based live updates instead of polling
+Disarankan menambahkan screenshot berikut pada repository:
 
-## Verification Notes
+- Dashboard monitoring
+- Halaman review alert
+- Halaman simulate transaction
 
-- `python -m compileall app` passes
-- `npm run build` passes
-- the app supports a single-server deployment with FastAPI + React build
+## Pengembangan Lanjutan
 
-## License
+- Integrasi aliran transaksi bank yang lebih realistis
+- Migrasi database dari SQLite ke PostgreSQL
+- Penambahan pipeline retraining model
+- Penambahan role-based access control
+- Visualisasi explainability yang lebih kaya
+- Live update berbasis WebSocket
 
-MIT License. See [LICENSE](/home/areksaxyz/Fraud-Detection-System-Untuk-Bank/LICENSE).
+## Catatan Verifikasi
+
+- `python -m compileall app` berhasil
+- `npm run build` berhasil
+- aplikasi mendukung deployment satu server dengan FastAPI + React build
+
+## Lisensi
+
+Proyek ini menggunakan lisensi MIT. Lihat [LICENSE](/home/areksaxyz/Fraud-Detection-System-Untuk-Bank/LICENSE).
