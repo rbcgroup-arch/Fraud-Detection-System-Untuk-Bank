@@ -82,6 +82,7 @@ Untuk memastikan sistem yang lebih stabil, mudah dipelihara, dan dapat diandalka
 -   **Penanganan Error yang Robust:** Setiap operasi database dan logika bisnis di endpoint API kini dilengkapi dengan blok `try-except` yang menangani `KeyError` dan *general exceptions* secara terpisah. Ini memastikan respons HTTP yang konsisten (misalnya, `404 Not Found`, `500 Internal Server Error`) dan pesan error yang informatif.
 -   **Konstanta Bernama:** "Magic numbers" yang digunakan dalam konfigurasi dan logika bisnis (seperti batas *pagination*, *timestamp* demo, dan parameter *seeding*) telah diekstraksi menjadi konstanta bernama. Ini meningkatkan keterbacaan kode dan mempermudah pemeliharaan.
 -   **Inisialisasi Database yang Aman:** Proses inisialisasi database saat *startup* aplikasi kini memiliki penanganan error yang lebih baik dan *logging* yang jelas, memastikan aplikasi dapat memulai dengan benar atau memberikan informasi diagnostik yang memadai jika terjadi masalah.
+-   **Resiliensi Layanan Database (SQLite):** Seluruh kueri dan interaksi database di `db.py` kini dilindungi dengan penangkapan `sqlite3.Error`. Ini mencegah aplikasi *crash* akibat masalah level file/database dan mencatat *stack trace* internal ke log secara aman tanpa membocorkannya ke *frontend*.
 -   **Dokumentasi Fungsi (Docstrings):** Setiap fungsi endpoint API kini dilengkapi dengan *docstrings* yang detail, menjelaskan tujuan fungsi, parameter yang diterima, dan struktur respons yang diharapkan.
 
 ## Mode Demo Satu Server
