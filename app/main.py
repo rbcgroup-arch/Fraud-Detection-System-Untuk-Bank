@@ -67,6 +67,23 @@ HISTORY_SEEDING_ITERATIONS = 10
 HISTORY_SEEDING_INTERVAL_MINUTES = 55
 HISTORY_SEEDING_BALANCE_MULTIPLIER = 14_500
 
+# Random transaction generation constants
+RANDOM_SUSPICIOUS_AMOUNT_MIN = 5_000_000
+RANDOM_SUSPICIOUS_AMOUNT_MAX = 15_000_000
+RANDOM_NORMAL_AMOUNT_MIN = 50_000
+RANDOM_NORMAL_AMOUNT_MAX = 300_000
+RANDOM_SUSPICIOUS_DEVICE_ID_MIN = 100
+RANDOM_SUSPICIOUS_DEVICE_ID_MAX = 999
+RANDOM_IP_SEGMENT_MIN = 1
+RANDOM_IP_SEGMENT_MAX = 254
+RANDOM_SUSPICIOUS_TIMESTAMP_HOUR = 2
+RANDOM_SUSPICIOUS_TIMESTAMP_MINUTE_MAX = 59
+RANDOM_ACCOUNT_NUMBER_MIN = 100_000_000
+RANDOM_ACCOUNT_NUMBER_MAX = 999_999_999
+SUSPICIOUS_BANKS = ["Bank B", "NeoBankX", "Shadow Bank"]
+NORMAL_BANKS = ["BCA", "BNI", "BRI", "Mandiri"]
+SUSPICIOUS_CITIES = ["Singapore", "Kuala Lumpur", "Jakarta"]
+
 app = FastAPI(
     title="Fraud Detection System",
     description="Hackathon-ready fraud detection dashboard for banking transactions.",
@@ -132,12 +149,25 @@ def _serialize_alert(alert: dict[str, object]) -> dict[str, object]:
 
 @app.get("/api/health", response_model=HealthResponse)
 def health() -> HealthResponse:
+    """
+    Checks the health of the API.
+
+    Returns:
+        HealthResponse: A dictionary with status "ok" if the API is running.
+    """
     return {"status": "ok"}
 
 
 @app.get("/api/users", response_model=UsersListResponse)
 def list_users() -> UsersListResponse:
-    """Fetch list of all users."""
+    """
+    Fetches a list of all registered users.
+
+    Returns:
+        UsersListResponse: A dictionary containing a list of user objects.
+    Raises:
+        HTTPException: If there is an error fetching users from the database.
+    """
     try:
         logger.info("Fetching users list")
         users = fetch_users()
@@ -150,7 +180,17 @@ def list_users() -> UsersListResponse:
 
 @app.get("/api/transactions", response_model=TransactionsListResponse)
 def list_transactions(limit: int = DEFAULT_TRANSACTIONS_LIMIT) -> TransactionsListResponse:
-    """Fetch list of transactions with optional limit."""
+    """
+    Fetches a list of transactions.
+
+    Args:
+        limit (int): The maximum number of transactions to retrieve. Defaults to DEFAULT_TRANSACTIONS_LIMIT.
+
+    Returns:
+        TransactionsListResponse: A dictionary containing a list of serialized transaction objects.
+    Raises:
+        HTTPException: If there is an error fetching transactions from the database.
+    """
     try:
         logger.info(f"Fetching transactions with limit={limit}")
         transactions = fetch_transactions(limit=limit)
@@ -164,7 +204,17 @@ def list_transactions(limit: int = DEFAULT_TRANSACTIONS_LIMIT) -> TransactionsLi
 
 @app.get("/api/transactions/recent", response_model=TransactionsListResponse)
 def list_recent_transactions(limit: int = DEFAULT_RECENT_TRANSACTIONS_LIMIT) -> TransactionsListResponse:
-    """Fetch recent transactions with optional limit."""
+    """
+    Fetches a list of recent transactions.
+
+    Args:
+        limit (int): The maximum number of recent transactions to retrieve. Defaults to DEFAULT_RECENT_TRANSACTIONS_LIMIT.
+
+    Returns:
+        TransactionsListResponse: A dictionary containing a list of serialized recent transaction objects.
+    Raises:
+        HTTPException: If there is an error fetching recent transactions from the database.
+    """
     try:
         logger.info(f"Fetching recent transactions with limit={limit}")
         transactions = fetch_transactions(limit=limit)
@@ -178,7 +228,17 @@ def list_recent_transactions(limit: int = DEFAULT_RECENT_TRANSACTIONS_LIMIT) -> 
 
 @app.get("/api/alerts", response_model=AlertsListResponse)
 def list_alerts(limit: int = DEFAULT_ALERTS_LIMIT) -> AlertsListResponse:
-    """Fetch list of alerts with optional limit."""
+    """
+    Fetches a list of fraud alerts.
+
+    Args:
+        limit (int): The maximum number of alerts to retrieve. Defaults to DEFAULT_ALERTS_LIMIT.
+
+    Returns:
+        AlertsListResponse: A dictionary containing a list of serialized alert objects.
+    Raises:
+        HTTPException: If there is an error fetching alerts from the database.
+    """
     try:
         logger.info(f"Fetching alerts with limit={limit}")
         alerts = fetch_alerts(limit=limit)
@@ -192,7 +252,14 @@ def list_alerts(limit: int = DEFAULT_ALERTS_LIMIT) -> AlertsListResponse:
 
 @app.get("/api/dashboard/summary", response_model=DashboardSummaryResponse)
 def dashboard_summary() -> DashboardSummaryResponse:
-    """Fetch dashboard summary with recent alerts."""
+    """
+    Fetches a summary of dashboard statistics, including recent alerts.
+
+    Returns:
+        DashboardSummaryResponse: A dictionary containing summary statistics and a list of recent alerts.
+    Raises:
+        HTTPException: If there is an error fetching data for the dashboard summary.
+    """
     try:
         logger.info("Fetching dashboard summary")
         summary = fetch_summary()
@@ -207,7 +274,14 @@ def dashboard_summary() -> DashboardSummaryResponse:
 
 @app.get("/api/dashboard/charts", response_model=DashboardChartsResponse)
 def dashboard_charts() -> DashboardChartsResponse:
-    """Fetch dashboard chart data."""
+    """
+    Fetches data for dashboard charts, such as risk distribution and transactions per hour.
+
+    Returns:
+        DashboardChartsResponse: A dictionary containing data for various dashboard charts.
+    Raises:
+        HTTPException: If there is an error fetching chart data from the database.
+    """
     try:
         logger.info("Fetching dashboard charts")
         charts = fetch_dashboard_charts()
@@ -220,7 +294,17 @@ def dashboard_charts() -> DashboardChartsResponse:
 
 @app.post("/api/transactions/simulate", response_model=SimulateTransactionResponse)
 def simulate_transaction(transaction: TransactionCreate) -> SimulateTransactionResponse:
-    """Simulate transaction and run fraud analysis."""
+    """
+    Simulates a transaction and performs fraud analysis.
+
+    Retrieves user history, analyzes the transaction for fraud using rule-based and ML models,
+    inserts the transaction into the database, and returns the analysis results.
+
+    Args:
+        transaction (TransactionCreate): The transaction data to simulate.
+    Returns:
+        SimulateTransactionResponse: The result of the transaction simulation and fraud analysis.
+    """
     try:
         logger.info(f"Simulating transaction for user_id={transaction.user_id}")
         user = get_user(transaction.user_id)
@@ -260,7 +344,18 @@ def simulate_transaction(transaction: TransactionCreate) -> SimulateTransactionR
 
 @app.post("/api/alerts/{alert_id}/status", response_model=AlertStatusUpdateResponse)
 def change_alert_status(alert_id: int, payload: AlertStatusUpdate) -> AlertStatusUpdateResponse:
-    """Update alert status (open, review, resolved, blocked)."""
+    """
+    Updates the status of a specific fraud alert.
+
+    Args:
+        alert_id (int): The ID of the alert to update.
+        payload (AlertStatusUpdate): The new status for the alert (e.g., "open", "review", "resolved", "blocked").
+
+    Returns:
+        AlertStatusUpdateResponse: The updated alert object.
+    Raises:
+        HTTPException: If the specified alert_id does not exist or an error occurs during the update.
+    """
     try:
         logger.info(f"Updating alert status - alert_id={alert_id}, new_status={payload.status}")
         updated = update_alert_status(alert_id, payload.status)
@@ -453,7 +548,16 @@ def _populate_demo_dataset() -> SeedDemoResponse:
 
 @app.post("/api/demo/seed", response_model=SeedDemoResponse)
 def seed_demo_data() -> SeedDemoResponse:
-    """Seed demo data if not already present."""
+    """
+    Seeds the database with initial demo data if no transactions are present.
+
+    This endpoint checks if any transactions already exist. If not, it populates
+    the system with a predefined set of demo transactions and alerts.
+
+    Returns:
+        SeedDemoResponse: A message indicating whether data was seeded or already present,
+                          along with the dashboard summary.
+    """
     try:
         logger.info("Seed demo data requested")
         if has_transactions():
@@ -470,7 +574,15 @@ def seed_demo_data() -> SeedDemoResponse:
 
 @app.post("/api/demo/reset", response_model=SeedDemoResponse)
 def reset_demo_data() -> SeedDemoResponse:
-    """Reset and repopulate demo data."""
+    """
+    Resets the entire demo dataset and repopulates it with a fresh set of demo transactions and alerts.
+
+    This is useful for consistently demonstrating the system's features.
+
+    Returns:
+        SeedDemoResponse: A message indicating the reset and repopulation was successful,
+                          along with the dashboard summary.
+    """
     try:
         logger.info("Reset demo data requested")
         reset_demo_dataset()
@@ -483,23 +595,34 @@ def reset_demo_data() -> SeedDemoResponse:
 
 @app.post("/api/demo/random", response_model=SimulateTransactionResponse)
 def generate_random_transaction(suspicious: bool = False) -> SimulateTransactionResponse:
-    """Generate a random transaction for testing (debug endpoint)."""
+    """
+    Generates and simulates a random transaction for testing purposes.
+
+    This is a debug endpoint that can create either normal or suspicious transactions.
+
+    Args:
+        suspicious (bool): If True, generates a transaction with characteristics
+                           more likely to trigger fraud alerts. Defaults to False.
+
+    Returns:
+        SimulateTransactionResponse: The result of the generated and simulated transaction.
+    """
     try:
         logger.info(f"Generating random transaction - suspicious={suspicious}")
         user_id = choice(DEMO_USER_IDS)
         user = get_user(user_id)
         timestamp = datetime.utcnow()
         if suspicious and randint(0, 1):
-            timestamp = timestamp.replace(hour=2, minute=randint(0, 59), second=0, microsecond=0)
+            timestamp = timestamp.replace(hour=RANDOM_SUSPICIOUS_TIMESTAMP_HOUR, minute=randint(0, RANDOM_SUSPICIOUS_TIMESTAMP_MINUTE_MAX), second=0, microsecond=0)
 
         transaction = TransactionCreate(
             user_id=user_id,
-            amount=round(uniform(5_000_000, 15_000_000), 2) if suspicious else round(uniform(50_000, 300_000), 2),
-            destination_bank=choice(["Bank B", "NeoBankX", "Shadow Bank"]) if suspicious else choice(["BCA", "BNI", "BRI", "Mandiri"]),
-            destination_account=str(randint(100000000, 999999999)),
-            device_id=f"new-device-{randint(100, 999)}" if suspicious else user["usual_device"],
-            ip_address=f"172.16.{randint(1, 254)}.{randint(1, 254)}",
-            location_city=choice(["Singapore", "Kuala Lumpur", "Jakarta"]) if suspicious else user["usual_city"],
+            amount=round(uniform(RANDOM_SUSPICIOUS_AMOUNT_MIN, RANDOM_SUSPICIOUS_AMOUNT_MAX), 2) if suspicious else round(uniform(RANDOM_NORMAL_AMOUNT_MIN, RANDOM_NORMAL_AMOUNT_MAX), 2),
+            destination_bank=choice(SUSPICIOUS_BANKS) if suspicious else choice(NORMAL_BANKS),
+            destination_account=str(randint(RANDOM_ACCOUNT_NUMBER_MIN, RANDOM_ACCOUNT_NUMBER_MAX)),
+            device_id=f"new-device-{randint(RANDOM_SUSPICIOUS_DEVICE_ID_MIN, RANDOM_SUSPICIOUS_DEVICE_ID_MAX)}" if suspicious else user["usual_device"],
+            ip_address=f"172.16.{randint(RANDOM_IP_SEGMENT_MIN, RANDOM_IP_SEGMENT_MAX)}.{randint(RANDOM_IP_SEGMENT_MIN, RANDOM_IP_SEGMENT_MAX)}",
+            location_city=choice(SUSPICIOUS_CITIES) if suspicious else user["usual_city"],
             timestamp=timestamp,
         )
         history = fetch_user_history(user_id, limit=DEFAULT_USER_HISTORY_LIMIT)
@@ -529,6 +652,17 @@ def generate_random_transaction(suspicious: bool = False) -> SimulateTransaction
 
 @app.get("/{full_path:path}", include_in_schema=False)
 def serve_single_page_app(full_path: str) -> FileResponse:
+    """
+    Serves the single-page application (SPA) frontend.
+
+    This endpoint catches all unmatched routes and attempts to serve static files
+    from the frontend build directory or falls back to the main index.html.
+
+    Args:
+        full_path (str): The full path of the requested resource.
+    Returns:
+        FileResponse: The requested static file or the main index.html.
+    """
     if full_path.startswith(("api/", "docs", "openapi.json", "redoc", "static/")):
         raise HTTPException(status_code=404, detail="Not found")
 
