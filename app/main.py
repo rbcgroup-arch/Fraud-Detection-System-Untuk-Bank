@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 from random import choice, randint, uniform
@@ -38,10 +39,33 @@ from .schemas import (
     UsersListResponse,
 )
 
+# Configure logging
+logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+
+# Constants
 ROOT_DIR = Path(__file__).resolve().parent.parent
 LEGACY_STATIC_DIR = ROOT_DIR / "static"
 FRONTEND_DIST_DIR = ROOT_DIR / "frontend" / "dist"
 FRONTEND_ASSETS_DIR = FRONTEND_DIST_DIR / "assets"
+
+# Default limits for paginated endpoints
+DEFAULT_TRANSACTIONS_LIMIT = 100
+DEFAULT_RECENT_TRANSACTIONS_LIMIT = 12
+DEFAULT_ALERTS_LIMIT = 50
+DEFAULT_DASHBOARD_ALERTS_LIMIT = 6
+DEFAULT_USER_HISTORY_LIMIT = 100
+
+# Demo data constants
+DEMO_USER_IDS = [1, 2, 3]
+DEMO_START_TIME = datetime(2026, 3, 13, 8, 5, 0)
+DEMO_USER_TIME_OFFSET_MINUTES = 40
+HISTORY_SEEDING_ITERATIONS = 10
+HISTORY_SEEDING_INTERVAL_MINUTES = 55
+HISTORY_SEEDING_BALANCE_MULTIPLIER = 14_500
 
 app = FastAPI(
     title="Fraud Detection System",
@@ -64,7 +88,14 @@ if FRONTEND_ASSETS_DIR.exists():
 
 @app.on_event("startup")
 def startup_event() -> None:
-    init_db()
+    """Initialize database on application startup with error handling."""
+    try:
+        logger.info("Initializing database...")
+        init_db()
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize database: {str(e)}", exc_info=True)
+        raise
 
 
 def _frontend_index_file() -> Path | None:
@@ -106,74 +137,146 @@ def health() -> HealthResponse:
 
 @app.get("/api/users", response_model=UsersListResponse)
 def list_users() -> UsersListResponse:
-    return {"items": fetch_users()}
+    """Fetch list of all users."""
+    try:
+        logger.info("Fetching users list")
+        users = fetch_users()
+        logger.info(f"Successfully fetched {len(users)} users")
+        return {"items": users}
+    except Exception as e:
+        logger.error(f"Failed to fetch users: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch users") from e
 
 
 @app.get("/api/transactions", response_model=TransactionsListResponse)
-def list_transactions(limit: int = 100) -> TransactionsListResponse:
-    return {"items": [_serialize_transaction(item) for item in fetch_transactions(limit=limit)]}
+def list_transactions(limit: int = DEFAULT_TRANSACTIONS_LIMIT) -> TransactionsListResponse:
+    """Fetch list of transactions with optional limit."""
+    try:
+        logger.info(f"Fetching transactions with limit={limit}")
+        transactions = fetch_transactions(limit=limit)
+        serialized = [_serialize_transaction(item) for item in transactions]
+        logger.info(f"Successfully fetched {len(serialized)} transactions")
+        return {"items": serialized}
+    except Exception as e:
+        logger.error(f"Failed to fetch transactions: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch transactions") from e
 
 
 @app.get("/api/transactions/recent", response_model=TransactionsListResponse)
-def list_recent_transactions(limit: int = 12) -> TransactionsListResponse:
-    return {"items": [_serialize_transaction(item) for item in fetch_transactions(limit=limit)]}
+def list_recent_transactions(limit: int = DEFAULT_RECENT_TRANSACTIONS_LIMIT) -> TransactionsListResponse:
+    """Fetch recent transactions with optional limit."""
+    try:
+        logger.info(f"Fetching recent transactions with limit={limit}")
+        transactions = fetch_transactions(limit=limit)
+        serialized = [_serialize_transaction(item) for item in transactions]
+        logger.info(f"Successfully fetched {len(serialized)} recent transactions")
+        return {"items": serialized}
+    except Exception as e:
+        logger.error(f"Failed to fetch recent transactions: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch recent transactions") from e
 
 
 @app.get("/api/alerts", response_model=AlertsListResponse)
-def list_alerts(limit: int = 50) -> AlertsListResponse:
-    return {"items": [_serialize_alert(item) for item in fetch_alerts(limit=limit)]}
+def list_alerts(limit: int = DEFAULT_ALERTS_LIMIT) -> AlertsListResponse:
+    """Fetch list of alerts with optional limit."""
+    try:
+        logger.info(f"Fetching alerts with limit={limit}")
+        alerts = fetch_alerts(limit=limit)
+        serialized = [_serialize_alert(item) for item in alerts]
+        logger.info(f"Successfully fetched {len(serialized)} alerts")
+        return {"items": serialized}
+    except Exception as e:
+        logger.error(f"Failed to fetch alerts: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch alerts") from e
 
 
 @app.get("/api/dashboard/summary", response_model=DashboardSummaryResponse)
 def dashboard_summary() -> DashboardSummaryResponse:
-    summary = fetch_summary()
-    summary["recent_alerts"] = [_serialize_alert(item) for item in fetch_alerts(limit=6)]
-    return summary
+    """Fetch dashboard summary with recent alerts."""
+    try:
+        logger.info("Fetching dashboard summary")
+        summary = fetch_summary()
+        alerts = fetch_alerts(limit=DEFAULT_DASHBOARD_ALERTS_LIMIT)
+        summary["recent_alerts"] = [_serialize_alert(item) for item in alerts]
+        logger.info("Successfully fetched dashboard summary")
+        return summary
+    except Exception as e:
+        logger.error(f"Failed to fetch dashboard summary: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch dashboard summary") from e
 
 
 @app.get("/api/dashboard/charts", response_model=DashboardChartsResponse)
 def dashboard_charts() -> DashboardChartsResponse:
-    return fetch_dashboard_charts()
+    """Fetch dashboard chart data."""
+    try:
+        logger.info("Fetching dashboard charts")
+        charts = fetch_dashboard_charts()
+        logger.info("Successfully fetched dashboard charts")
+        return charts
+    except Exception as e:
+        logger.error(f"Failed to fetch dashboard charts: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch dashboard charts") from e
 
 
 @app.post("/api/transactions/simulate", response_model=SimulateTransactionResponse)
 def simulate_transaction(transaction: TransactionCreate) -> SimulateTransactionResponse:
+    """Simulate transaction and run fraud analysis."""
     try:
+        logger.info(f"Simulating transaction for user_id={transaction.user_id}")
         user = get_user(transaction.user_id)
+        logger.info(f"User found: {user.get('name', 'Unknown')}")
     except KeyError as error:
+        logger.warning(f"User not found: user_id={transaction.user_id}")
         raise HTTPException(status_code=404, detail="User not found") from error
+    except Exception as e:
+        logger.error(f"Failed to fetch user: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch user data") from e
 
-    history = fetch_user_history(transaction.user_id, limit=100)
-    analysis = analyze_transaction(transaction, user, history)
-    saved = insert_transaction(
-        {
-            **transaction.model_dump(),
-            "timestamp": transaction.timestamp.isoformat(),
-            **analysis,
+    try:
+        history = fetch_user_history(transaction.user_id, limit=DEFAULT_USER_HISTORY_LIMIT)
+        analysis = analyze_transaction(transaction, user, history)
+        saved = insert_transaction(
+            {
+                **transaction.model_dump(),
+                "timestamp": transaction.timestamp.isoformat(),
+                **analysis,
+            }
+        )
+        serialized = _serialize_transaction(saved)
+        logger.info(f"Transaction simulated successfully - risk_score={serialized['risk_score']}, alert_level={serialized['alert_level']}")
+        return {
+            "transaction_id": serialized["id"],
+            "risk_score": serialized["risk_score"],
+            "is_anomaly": serialized["is_anomaly"],
+            "alert_level": serialized["alert_level"],
+            "reason": serialized["reason"],
+            "reason_summary": serialized["reason_summary"],
+            "transaction": serialized,
         }
-    )
-    serialized = _serialize_transaction(saved)
-    return {
-        "transaction_id": serialized["id"],
-        "risk_score": serialized["risk_score"],
-        "is_anomaly": serialized["is_anomaly"],
-        "alert_level": serialized["alert_level"],
-        "reason": serialized["reason"],
-        "reason_summary": serialized["reason_summary"],
-        "transaction": serialized,
-    }
+    except Exception as e:
+        logger.error(f"Failed to simulate transaction: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to simulate transaction") from e
 
 
 @app.post("/api/alerts/{alert_id}/status", response_model=AlertStatusUpdateResponse)
 def change_alert_status(alert_id: int, payload: AlertStatusUpdate) -> AlertStatusUpdateResponse:
+    """Update alert status (open, review, resolved, blocked)."""
     try:
+        logger.info(f"Updating alert status - alert_id={alert_id}, new_status={payload.status}")
         updated = update_alert_status(alert_id, payload.status)
+        serialized = _serialize_alert(updated)
+        logger.info(f"Alert status updated successfully for alert_id={alert_id}")
+        return {"alert": serialized}
     except KeyError as error:
+        logger.warning(f"Alert not found: alert_id={alert_id}")
         raise HTTPException(status_code=404, detail="Alert not found") from error
-    return {"alert": _serialize_alert(updated)}
+    except Exception as e:
+        logger.error(f"Failed to update alert status: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to update alert status") from e
 
 
 def _seed_normal_history(user_id: int, base_time: datetime) -> None:
+    """Seed normal transaction history for a user to establish baseline behavior."""
     user = get_user(user_id)
     usual_destinations = [
         ("BCA", "982001111"),
@@ -192,12 +295,12 @@ def _seed_normal_history(user_id: int, base_time: datetime) -> None:
         169_000,
         187_500,
     ]
-    for index in range(10):
+    for index in range(HISTORY_SEEDING_ITERATIONS):
         bank, destination = usual_destinations[index % len(usual_destinations)]
-        timestamp = base_time + timedelta(minutes=55 * index)
+        timestamp = base_time + timedelta(minutes=HISTORY_SEEDING_INTERVAL_MINUTES * index)
         transaction = TransactionCreate(
             user_id=user_id,
-            amount=round(deterministic_amounts[index] + (user_id - 1) * 14_500, 2),
+            amount=round(deterministic_amounts[index] + (user_id - 1) * HISTORY_SEEDING_BALANCE_MULTIPLIER, 2),
             destination_bank=bank,
             destination_account=destination,
             device_id=user["usual_device"],
@@ -205,7 +308,7 @@ def _seed_normal_history(user_id: int, base_time: datetime) -> None:
             location_city=user["usual_city"],
             timestamp=timestamp,
         )
-        history = fetch_user_history(user_id, limit=100)
+        history = fetch_user_history(user_id, limit=DEFAULT_USER_HISTORY_LIMIT)
         analysis = analyze_transaction(transaction, user, history)
         analysis.update(
             {
@@ -230,8 +333,9 @@ def _insert_demo_transaction(
     transaction: TransactionCreate,
     status: str | None = None,
 ) -> dict[str, object]:
+    """Insert a demo transaction and optionally update its alert status."""
     user = get_user(transaction.user_id)
-    history = fetch_user_history(transaction.user_id, limit=100)
+    history = fetch_user_history(transaction.user_id, limit=DEFAULT_USER_HISTORY_LIMIT)
     analysis = analyze_transaction(transaction, user, history)
     saved = insert_transaction(
         {
@@ -247,9 +351,11 @@ def _insert_demo_transaction(
 
 
 def _populate_demo_dataset() -> SeedDemoResponse:
-    demo_start_time = datetime(2026, 3, 13, 8, 5, 0)
-    for user_id in [1, 2, 3]:
-        _seed_normal_history(user_id, demo_start_time + timedelta(minutes=user_id * 40))
+    """Populate the system with demo transactions and alerts for testing."""
+    logger.info("Populating demo dataset...")
+    demo_start_time = DEMO_START_TIME
+    for user_id in DEMO_USER_IDS:
+        _seed_normal_history(user_id, demo_start_time + timedelta(minutes=user_id * DEMO_USER_TIME_OFFSET_MINUTES))
 
     seeded_alerts: list[dict[str, object]] = []
 
@@ -337,6 +443,7 @@ def _populate_demo_dataset() -> SeedDemoResponse:
         ),
         seeded_alerts[0],
     )
+    logger.info(f"Demo dataset populated with {len(seeded_alerts)} alerts")
     return {
         "message": "Frozen demo dataset restored.",
         "seeded_alert_id": primary_alert.get("alert_id"),
@@ -346,57 +453,78 @@ def _populate_demo_dataset() -> SeedDemoResponse:
 
 @app.post("/api/demo/seed", response_model=SeedDemoResponse)
 def seed_demo_data() -> SeedDemoResponse:
-    if has_transactions():
-        return {
-            "message": "Transactions already seeded.",
-            "summary": dashboard_summary(),
-        }
-    return _populate_demo_dataset()
+    """Seed demo data if not already present."""
+    try:
+        logger.info("Seed demo data requested")
+        if has_transactions():
+            logger.info("Demo data already seeded, skipping")
+            return {
+                "message": "Transactions already seeded.",
+                "summary": dashboard_summary(),
+            }
+        return _populate_demo_dataset()
+    except Exception as e:
+        logger.error(f"Failed to seed demo data: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to seed demo data") from e
 
 
 @app.post("/api/demo/reset", response_model=SeedDemoResponse)
 def reset_demo_data() -> SeedDemoResponse:
-    reset_demo_dataset()
-    return _populate_demo_dataset()
+    """Reset and repopulate demo data."""
+    try:
+        logger.info("Reset demo data requested")
+        reset_demo_dataset()
+        logger.info("Demo dataset reset")
+        return _populate_demo_dataset()
+    except Exception as e:
+        logger.error(f"Failed to reset demo data: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to reset demo data") from e
 
 
 @app.post("/api/demo/random", response_model=SimulateTransactionResponse)
 def generate_random_transaction(suspicious: bool = False) -> SimulateTransactionResponse:
-    user_id = choice([1, 2, 3])
-    user = get_user(user_id)
-    timestamp = datetime.utcnow()
-    if suspicious and randint(0, 1):
-        timestamp = timestamp.replace(hour=2, minute=randint(0, 59), second=0, microsecond=0)
+    """Generate a random transaction for testing (debug endpoint)."""
+    try:
+        logger.info(f"Generating random transaction - suspicious={suspicious}")
+        user_id = choice(DEMO_USER_IDS)
+        user = get_user(user_id)
+        timestamp = datetime.utcnow()
+        if suspicious and randint(0, 1):
+            timestamp = timestamp.replace(hour=2, minute=randint(0, 59), second=0, microsecond=0)
 
-    transaction = TransactionCreate(
-        user_id=user_id,
-        amount=round(uniform(5_000_000, 15_000_000), 2) if suspicious else round(uniform(50_000, 300_000), 2),
-        destination_bank=choice(["Bank B", "NeoBankX", "Shadow Bank"]) if suspicious else choice(["BCA", "BNI", "BRI", "Mandiri"]),
-        destination_account=str(randint(100000000, 999999999)),
-        device_id=f"new-device-{randint(100, 999)}" if suspicious else user["usual_device"],
-        ip_address=f"172.16.{randint(1, 254)}.{randint(1, 254)}",
-        location_city=choice(["Singapore", "Kuala Lumpur", "Jakarta"]) if suspicious else user["usual_city"],
-        timestamp=timestamp,
-    )
-    history = fetch_user_history(user_id, limit=100)
-    analysis = analyze_transaction(transaction, user, history)
-    saved = insert_transaction(
-        {
-            **transaction.model_dump(),
-            "timestamp": transaction.timestamp.isoformat(),
-            **analysis,
+        transaction = TransactionCreate(
+            user_id=user_id,
+            amount=round(uniform(5_000_000, 15_000_000), 2) if suspicious else round(uniform(50_000, 300_000), 2),
+            destination_bank=choice(["Bank B", "NeoBankX", "Shadow Bank"]) if suspicious else choice(["BCA", "BNI", "BRI", "Mandiri"]),
+            destination_account=str(randint(100000000, 999999999)),
+            device_id=f"new-device-{randint(100, 999)}" if suspicious else user["usual_device"],
+            ip_address=f"172.16.{randint(1, 254)}.{randint(1, 254)}",
+            location_city=choice(["Singapore", "Kuala Lumpur", "Jakarta"]) if suspicious else user["usual_city"],
+            timestamp=timestamp,
+        )
+        history = fetch_user_history(user_id, limit=DEFAULT_USER_HISTORY_LIMIT)
+        analysis = analyze_transaction(transaction, user, history)
+        saved = insert_transaction(
+            {
+                **transaction.model_dump(),
+                "timestamp": transaction.timestamp.isoformat(),
+                **analysis,
+            }
+        )
+        serialized = _serialize_transaction(saved)
+        logger.info(f"Random transaction generated - risk_score={serialized['risk_score']}, alert_level={serialized['alert_level']}")
+        return {
+            "transaction_id": serialized["id"],
+            "risk_score": serialized["risk_score"],
+            "is_anomaly": serialized["is_anomaly"],
+            "alert_level": serialized["alert_level"],
+            "reason": serialized["reason"],
+            "reason_summary": serialized["reason_summary"],
+            "transaction": serialized,
         }
-    )
-    serialized = _serialize_transaction(saved)
-    return {
-        "transaction_id": serialized["id"],
-        "risk_score": serialized["risk_score"],
-        "is_anomaly": serialized["is_anomaly"],
-        "alert_level": serialized["alert_level"],
-        "reason": serialized["reason"],
-        "reason_summary": serialized["reason_summary"],
-        "transaction": serialized,
-    }
+    except Exception as e:
+        logger.error(f"Failed to generate random transaction: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to generate random transaction") from e
 
 
 @app.get("/{full_path:path}", include_in_schema=False)
