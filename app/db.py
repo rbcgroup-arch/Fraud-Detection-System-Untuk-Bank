@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from contextlib import closing
 from datetime import datetime
@@ -10,6 +11,8 @@ from typing import Any
 ROOT_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT_DIR / "data"
 DB_PATH = DATA_DIR / "fraud.db"
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_USERS = [
     {
@@ -37,6 +40,10 @@ DEFAULT_USERS = [
 
 
 def get_connection() -> sqlite3.Connection:
+    """
+    Establishes and returns a connection to the SQLite database.
+    Creates the data directory if it does not exist.
+    """
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(DB_PATH)
     connection.row_factory = sqlite3.Row
@@ -44,11 +51,13 @@ def get_connection() -> sqlite3.Connection:
 
 
 def _table_columns(connection: sqlite3.Connection, table_name: str) -> set[str]:
+    """Helper function to get existing columns of a table."""
     rows = connection.execute(f"PRAGMA table_info({table_name})").fetchall()
     return {row["name"] for row in rows}
 
 
 def _reset_incompatible_tables(connection: sqlite3.Connection) -> None:
+    """Helper function to drop tables if their schema does not match the required columns."""
     required = {
         "users": {"id", "name", "account_number", "usual_device", "usual_city", "created_at"},
         "transactions": {
@@ -80,65 +89,70 @@ def _reset_incompatible_tables(connection: sqlite3.Connection) -> None:
 
 
 def init_db() -> None:
-    with closing(get_connection()) as connection:
-        _reset_incompatible_tables(connection)
-        connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY,
-                name TEXT NOT NULL,
-                account_number TEXT NOT NULL UNIQUE,
-                usual_device TEXT NOT NULL,
-                usual_city TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    """Initializes the SQLite database, creates required tables if they don't exist, and seeds default users."""
+    try:
+        with closing(get_connection()) as connection:
+            _reset_incompatible_tables(connection)
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    account_number TEXT NOT NULL UNIQUE,
+                    usual_device TEXT NOT NULL,
+                    usual_city TEXT NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
             )
-            """
-        )
-        connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS transactions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                amount REAL NOT NULL,
-                transaction_type TEXT NOT NULL,
-                destination_bank TEXT NOT NULL,
-                destination_account TEXT NOT NULL,
-                timestamp TEXT NOT NULL,
-                device_id TEXT NOT NULL,
-                ip_address TEXT NOT NULL,
-                location_city TEXT NOT NULL,
-                is_anomaly INTEGER NOT NULL DEFAULT 0,
-                ml_score INTEGER NOT NULL DEFAULT 0,
-                rule_score INTEGER NOT NULL DEFAULT 0,
-                risk_score INTEGER NOT NULL DEFAULT 0,
-                alert_level TEXT NOT NULL DEFAULT 'normal',
-                reason TEXT NOT NULL DEFAULT '[]',
-                feature_snapshot TEXT NOT NULL DEFAULT '{}',
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(user_id) REFERENCES users(id)
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS transactions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    amount REAL NOT NULL,
+                    transaction_type TEXT NOT NULL,
+                    destination_bank TEXT NOT NULL,
+                    destination_account TEXT NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    device_id TEXT NOT NULL,
+                    ip_address TEXT NOT NULL,
+                    location_city TEXT NOT NULL,
+                    is_anomaly INTEGER NOT NULL DEFAULT 0,
+                    ml_score INTEGER NOT NULL DEFAULT 0,
+                    rule_score INTEGER NOT NULL DEFAULT 0,
+                    risk_score INTEGER NOT NULL DEFAULT 0,
+                    alert_level TEXT NOT NULL DEFAULT 'normal',
+                    reason TEXT NOT NULL DEFAULT '[]',
+                    feature_snapshot TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(user_id) REFERENCES users(id)
+                )
+                """
             )
-            """
-        )
-        connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS alerts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                transaction_id INTEGER NOT NULL UNIQUE,
-                alert_level TEXT NOT NULL,
-                status TEXT NOT NULL DEFAULT 'open',
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(transaction_id) REFERENCES transactions(id)
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS alerts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    transaction_id INTEGER NOT NULL UNIQUE,
+                    alert_level TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'open',
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(transaction_id) REFERENCES transactions(id)
+                )
+                """
             )
-            """
-        )
-        connection.executemany(
-            """
-            INSERT OR IGNORE INTO users (id, name, account_number, usual_device, usual_city)
-            VALUES (:id, :name, :account_number, :usual_device, :usual_city)
-            """,
-            DEFAULT_USERS,
-        )
-        connection.commit()
+            connection.executemany(
+                """
+                INSERT OR IGNORE INTO users (id, name, account_number, usual_device, usual_city)
+                VALUES (:id, :name, :account_number, :usual_device, :usual_city)
+                """,
+                DEFAULT_USERS,
+            )
+            connection.commit()
+    except sqlite3.Error as e:
+        logger.error(f"Database initialization failed: {e}", exc_info=True)
+        raise
 
 
 def _parse_json(raw: str, fallback: Any) -> Any:
@@ -163,33 +177,44 @@ def alert_row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
 
 
 def fetch_users() -> list[dict[str, Any]]:
-    with closing(get_connection()) as connection:
-        rows = connection.execute(
-            """
-            SELECT id, name, account_number, usual_device, usual_city, created_at
-            FROM users
-            ORDER BY id ASC
-            """
-        ).fetchall()
-    return [dict(row) for row in rows]
+    """Retrieves a list of all registered users from the database."""
+    try:
+        with closing(get_connection()) as connection:
+            rows = connection.execute(
+                """
+                SELECT id, name, account_number, usual_device, usual_city, created_at
+                FROM users
+                ORDER BY id ASC
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
+    except sqlite3.Error as e:
+        logger.error(f"Database error while fetching users: {e}", exc_info=True)
+        raise
 
 
 def get_user(user_id: int) -> dict[str, Any]:
-    with closing(get_connection()) as connection:
-        row = connection.execute(
-            """
-            SELECT id, name, account_number, usual_device, usual_city, created_at
-            FROM users
-            WHERE id = ?
-            """,
-            (user_id,),
-        ).fetchone()
-    if row is None:
-        raise KeyError(user_id)
-    return dict(row)
+    """Fetches a specific user by ID. Raises KeyError if not found."""
+    try:
+        with closing(get_connection()) as connection:
+            row = connection.execute(
+                """
+                SELECT id, name, account_number, usual_device, usual_city, created_at
+                FROM users
+                WHERE id = ?
+                """,
+                (user_id,),
+            ).fetchone()
+        if row is None:
+            raise KeyError(user_id)
+        return dict(row)
+    except sqlite3.Error as e:
+        logger.error(f"Database error while fetching user {user_id}: {e}", exc_info=True)
+        raise
 
 
 def insert_transaction(transaction: dict[str, Any]) -> dict[str, Any]:
+    """Inserts a new transaction into the database and creates an alert if necessary."""
     payload = transaction.copy()
     payload["reason"] = json.dumps(payload["reason"])
     payload["feature_snapshot"] = json.dumps(payload["feature_snapshot"])
@@ -214,252 +239,306 @@ def insert_transaction(transaction: dict[str, Any]) -> dict[str, Any]:
         "feature_snapshot",
     ]
 
-    with closing(get_connection()) as connection:
-        cursor = connection.execute(
-            f"""
-            INSERT INTO transactions ({", ".join(columns)})
-            VALUES ({", ".join("?" for _ in columns)})
-            """,
-            [payload[column] for column in columns],
-        )
-        transaction_id = cursor.lastrowid
-        if payload["alert_level"] in {"suspicious", "high"}:
-            connection.execute(
-                """
-                INSERT OR REPLACE INTO alerts (transaction_id, alert_level, status, created_at)
-                VALUES (?, ?, ?, ?)
+    try:
+        with closing(get_connection()) as connection:
+            cursor = connection.execute(
+                f"""
+                INSERT INTO transactions ({", ".join(columns)})
+                VALUES ({", ".join("?" for _ in columns)})
                 """,
-                (
-                    transaction_id,
-                    payload["alert_level"],
-                    "open",
-                    datetime.utcnow().isoformat(),
-                ),
+                [payload[column] for column in columns],
             )
-        connection.commit()
+            transaction_id = cursor.lastrowid
+            if payload["alert_level"] in {"suspicious", "high"}:
+                connection.execute(
+                    """
+                    INSERT OR REPLACE INTO alerts (transaction_id, alert_level, status, created_at)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (
+                        transaction_id,
+                        payload["alert_level"],
+                        "open",
+                        datetime.utcnow().isoformat(),
+                    ),
+                )
+            connection.commit()
 
-    return get_transaction(transaction_id)
+        return get_transaction(transaction_id)
+    except sqlite3.Error as e:
+        logger.error(f"Database error while inserting transaction: {e}", exc_info=True)
+        raise
 
 
 def get_transaction(transaction_id: int) -> dict[str, Any]:
-    with closing(get_connection()) as connection:
-        row = connection.execute(
-            """
-            SELECT
-                t.*,
-                u.name AS user_name,
-                u.account_number,
-                a.id AS alert_id,
-                a.status AS alert_status
-            FROM transactions t
-            JOIN users u ON u.id = t.user_id
-            LEFT JOIN alerts a ON a.transaction_id = t.id
-            WHERE t.id = ?
-            """,
-            (transaction_id,),
-        ).fetchone()
-    if row is None:
-        raise KeyError(transaction_id)
-    return transaction_row_to_dict(row)
+    """Fetches a specific transaction by ID, joining with user and alert data."""
+    try:
+        with closing(get_connection()) as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    t.*,
+                    u.name AS user_name,
+                    u.account_number,
+                    a.id AS alert_id,
+                    a.status AS alert_status
+                FROM transactions t
+                JOIN users u ON u.id = t.user_id
+                LEFT JOIN alerts a ON a.transaction_id = t.id
+                WHERE t.id = ?
+                """,
+                (transaction_id,),
+            ).fetchone()
+        if row is None:
+            raise KeyError(transaction_id)
+        return transaction_row_to_dict(row)
+    except sqlite3.Error as e:
+        logger.error(f"Database error while fetching transaction {transaction_id}: {e}", exc_info=True)
+        raise
 
 
 def fetch_transactions(limit: int = 100) -> list[dict[str, Any]]:
-    with closing(get_connection()) as connection:
-        rows = connection.execute(
-            """
-            SELECT
-                t.*,
-                u.name AS user_name,
-                u.account_number,
-                a.id AS alert_id,
-                a.status AS alert_status
-            FROM transactions t
-            JOIN users u ON u.id = t.user_id
-            LEFT JOIN alerts a ON a.transaction_id = t.id
-            ORDER BY datetime(t.timestamp) DESC, t.id DESC
-            LIMIT ?
-            """,
-            (limit,),
-        ).fetchall()
-    return [transaction_row_to_dict(row) for row in rows]
+    """Fetches a list of recent transactions, joining with user and alert data."""
+    try:
+        with closing(get_connection()) as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    t.*,
+                    u.name AS user_name,
+                    u.account_number,
+                    a.id AS alert_id,
+                    a.status AS alert_status
+                FROM transactions t
+                JOIN users u ON u.id = t.user_id
+                LEFT JOIN alerts a ON a.transaction_id = t.id
+                ORDER BY datetime(t.timestamp) DESC, t.id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [transaction_row_to_dict(row) for row in rows]
+    except sqlite3.Error as e:
+        logger.error(f"Database error while fetching transactions: {e}", exc_info=True)
+        raise
 
 
 def fetch_user_history(user_id: int, limit: int = 100) -> list[dict[str, Any]]:
-    with closing(get_connection()) as connection:
-        rows = connection.execute(
-            """
-            SELECT *
-            FROM transactions
-            WHERE user_id = ?
-            ORDER BY datetime(timestamp) ASC, id ASC
-            LIMIT ?
-            """,
-            (user_id, limit),
-        ).fetchall()
-    return [transaction_row_to_dict(row) for row in rows]
+    """Fetches transaction history for a specific user to build their baseline."""
+    try:
+        with closing(get_connection()) as connection:
+            rows = connection.execute(
+                """
+                SELECT *
+                FROM transactions
+                WHERE user_id = ?
+                ORDER BY datetime(timestamp) ASC, id ASC
+                LIMIT ?
+                """,
+                (user_id, limit),
+            ).fetchall()
+        return [transaction_row_to_dict(row) for row in rows]
+    except sqlite3.Error as e:
+        logger.error(f"Database error while fetching history for user {user_id}: {e}", exc_info=True)
+        raise
 
 
 def fetch_alerts(limit: int = 50) -> list[dict[str, Any]]:
-    with closing(get_connection()) as connection:
-        rows = connection.execute(
-            """
-            SELECT
-                a.id,
-                a.transaction_id,
-                a.alert_level,
-                a.status,
-                a.created_at,
-                t.risk_score,
-                t.amount,
-                t.destination_bank,
-                t.destination_account,
-                t.timestamp,
-                t.reason,
-                u.name AS user_name,
-                u.account_number
-            FROM alerts a
-            JOIN transactions t ON t.id = a.transaction_id
-            JOIN users u ON u.id = t.user_id
-            ORDER BY datetime(a.created_at) DESC, a.id DESC
-            LIMIT ?
-            """,
-            (limit,),
-        ).fetchall()
-    return [alert_row_to_dict(row) for row in rows]
+    """Fetches a list of recent fraud alerts with their associated transaction details."""
+    try:
+        with closing(get_connection()) as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    a.id,
+                    a.transaction_id,
+                    a.alert_level,
+                    a.status,
+                    a.created_at,
+                    t.risk_score,
+                    t.amount,
+                    t.destination_bank,
+                    t.destination_account,
+                    t.timestamp,
+                    t.reason,
+                    u.name AS user_name,
+                    u.account_number
+                FROM alerts a
+                JOIN transactions t ON t.id = a.transaction_id
+                JOIN users u ON u.id = t.user_id
+                ORDER BY datetime(a.created_at) DESC, a.id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [alert_row_to_dict(row) for row in rows]
+    except sqlite3.Error as e:
+        logger.error(f"Database error while fetching alerts: {e}", exc_info=True)
+        raise
 
 
 def get_alert(alert_id: int) -> dict[str, Any]:
-    with closing(get_connection()) as connection:
-        row = connection.execute(
-            """
-            SELECT
-                a.id,
-                a.transaction_id,
-                a.alert_level,
-                a.status,
-                a.created_at,
-                t.risk_score,
-                t.amount,
-                t.destination_bank,
-                t.destination_account,
-                t.timestamp,
-                t.reason,
-                u.name AS user_name,
-                u.account_number
-            FROM alerts a
-            JOIN transactions t ON t.id = a.transaction_id
-            JOIN users u ON u.id = t.user_id
-            WHERE a.id = ?
-            """,
-            (alert_id,),
-        ).fetchone()
-    if row is None:
-        raise KeyError(alert_id)
-    return alert_row_to_dict(row)
+    """Fetches a specific alert by ID. Raises KeyError if not found."""
+    try:
+        with closing(get_connection()) as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    a.id,
+                    a.transaction_id,
+                    a.alert_level,
+                    a.status,
+                    a.created_at,
+                    t.risk_score,
+                    t.amount,
+                    t.destination_bank,
+                    t.destination_account,
+                    t.timestamp,
+                    t.reason,
+                    u.name AS user_name,
+                    u.account_number
+                FROM alerts a
+                JOIN transactions t ON t.id = a.transaction_id
+                JOIN users u ON u.id = t.user_id
+                WHERE a.id = ?
+                """,
+                (alert_id,),
+            ).fetchone()
+        if row is None:
+            raise KeyError(alert_id)
+        return alert_row_to_dict(row)
+    except sqlite3.Error as e:
+        logger.error(f"Database error while fetching alert {alert_id}: {e}", exc_info=True)
+        raise
 
 
 def update_alert_status(alert_id: int, status: str) -> dict[str, Any]:
-    with closing(get_connection()) as connection:
-        connection.execute(
-            """
-            UPDATE alerts
-            SET status = ?
-            WHERE id = ?
-            """,
-            (status, alert_id),
-        )
-        connection.commit()
-    return get_alert(alert_id)
+    """Updates the status (open, review, resolved, blocked) of a specific alert."""
+    try:
+        with closing(get_connection()) as connection:
+            connection.execute(
+                """
+                UPDATE alerts
+                SET status = ?
+                WHERE id = ?
+                """,
+                (status, alert_id),
+            )
+            connection.commit()
+        return get_alert(alert_id)
+    except sqlite3.Error as e:
+        logger.error(f"Database error while updating alert {alert_id}: {e}", exc_info=True)
+        raise
 
 
 def has_transactions() -> bool:
-    with closing(get_connection()) as connection:
-        row = connection.execute(
-            "SELECT COUNT(*) AS total FROM transactions"
-        ).fetchone()
-    return bool(row["total"])
+    """Checks if there are any transactions currently in the database."""
+    try:
+        with closing(get_connection()) as connection:
+            row = connection.execute(
+                "SELECT COUNT(*) AS total FROM transactions"
+            ).fetchone()
+        return bool(row["total"])
+    except sqlite3.Error as e:
+        logger.error(f"Database error while checking transactions: {e}", exc_info=True)
+        raise
 
 
 def reset_demo_dataset() -> None:
-    with closing(get_connection()) as connection:
-        connection.execute("DELETE FROM alerts")
-        connection.execute("DELETE FROM transactions")
-        connection.execute(
-            "DELETE FROM sqlite_sequence WHERE name IN ('transactions', 'alerts')"
-        )
-        connection.commit()
+    """Deletes all transactions and alerts, resetting the database for demo purposes."""
+    try:
+        with closing(get_connection()) as connection:
+            connection.execute("DELETE FROM alerts")
+            connection.execute("DELETE FROM transactions")
+            connection.execute(
+                "DELETE FROM sqlite_sequence WHERE name IN ('transactions', 'alerts')"
+            )
+            connection.commit()
+    except sqlite3.Error as e:
+        logger.error(f"Database error while resetting demo dataset: {e}", exc_info=True)
+        raise
 
 
 def fetch_summary() -> dict[str, Any]:
-    with closing(get_connection()) as connection:
-        metrics = connection.execute(
-            """
-            SELECT
-                COUNT(*) AS total_transactions,
-                SUM(CASE WHEN alert_level = 'suspicious' THEN 1 ELSE 0 END) AS suspicious_transactions,
-                SUM(CASE WHEN alert_level = 'high' THEN 1 ELSE 0 END) AS high_risk_alerts,
-                COALESCE(AVG(risk_score), 0) AS average_risk,
-                COALESCE(SUM(amount), 0) AS total_volume
-            FROM transactions
-            """
-        ).fetchone()
+    """Calculates and returns top-level summary metrics for the dashboard."""
+    try:
+        with closing(get_connection()) as connection:
+            metrics = connection.execute(
+                """
+                SELECT
+                    COUNT(*) AS total_transactions,
+                    SUM(CASE WHEN alert_level = 'suspicious' THEN 1 ELSE 0 END) AS suspicious_transactions,
+                    SUM(CASE WHEN alert_level = 'high' THEN 1 ELSE 0 END) AS high_risk_alerts,
+                    COALESCE(AVG(risk_score), 0) AS average_risk,
+                    COALESCE(SUM(amount), 0) AS total_volume
+                FROM transactions
+                """
+            ).fetchone()
 
-    total_transactions = metrics["total_transactions"] or 0
-    suspicious_transactions = metrics["suspicious_transactions"] or 0
-    high_risk_alerts = metrics["high_risk_alerts"] or 0
-    fraud_rate = (
-        round(((suspicious_transactions + high_risk_alerts) / total_transactions) * 100, 2)
-        if total_transactions
-        else 0
-    )
-    return {
-        "total_transactions": total_transactions,
-        "suspicious_transactions": suspicious_transactions + high_risk_alerts,
-        "high_risk_alerts": high_risk_alerts,
-        "fraud_rate": fraud_rate,
-        "average_risk": round(metrics["average_risk"] or 0, 2),
-        "total_volume": round(metrics["total_volume"] or 0, 2),
-    }
+        total_transactions = metrics["total_transactions"] or 0
+        suspicious_transactions = metrics["suspicious_transactions"] or 0
+        high_risk_alerts = metrics["high_risk_alerts"] or 0
+        fraud_rate = (
+            round(((suspicious_transactions + high_risk_alerts) / total_transactions) * 100, 2)
+            if total_transactions
+            else 0
+        )
+        return {
+            "total_transactions": total_transactions,
+            "suspicious_transactions": suspicious_transactions + high_risk_alerts,
+            "high_risk_alerts": high_risk_alerts,
+            "fraud_rate": fraud_rate,
+            "average_risk": round(metrics["average_risk"] or 0, 2),
+            "total_volume": round(metrics["total_volume"] or 0, 2),
+        }
+    except sqlite3.Error as e:
+        logger.error(f"Database error while fetching summary metrics: {e}", exc_info=True)
+        raise
 
 
 def fetch_dashboard_charts() -> dict[str, Any]:
-    with closing(get_connection()) as connection:
-        hourly_rows = connection.execute(
-            """
-            SELECT
-                strftime('%H', timestamp) AS hour,
-                COUNT(*) AS total
-            FROM transactions
-            GROUP BY hour
-            ORDER BY hour
-            """
-        ).fetchall()
-        distribution_rows = connection.execute(
-            """
-            SELECT alert_level, COUNT(*) AS total
-            FROM transactions
-            GROUP BY alert_level
-            """
-        ).fetchall()
+    """Fetches aggregated data required to render dashboard charts."""
+    try:
+        with closing(get_connection()) as connection:
+            hourly_rows = connection.execute(
+                """
+                SELECT
+                    strftime('%H', timestamp) AS hour,
+                    COUNT(*) AS total
+                FROM transactions
+                GROUP BY hour
+                ORDER BY hour
+                """
+            ).fetchall()
+            distribution_rows = connection.execute(
+                """
+                SELECT alert_level, COUNT(*) AS total
+                FROM transactions
+                GROUP BY alert_level
+                """
+            ).fetchall()
 
-    hour_map = {row["hour"]: row["total"] for row in hourly_rows if row["hour"] is not None}
-    transactions_per_hour = [
-        {"hour": f"{hour:02d}:00", "total": hour_map.get(f"{hour:02d}", 0)}
-        for hour in range(24)
-    ]
-    distribution = {row["alert_level"]: row["total"] for row in distribution_rows}
-    return {
-        "transactions_per_hour": transactions_per_hour,
-        "risk_distribution": {
-            "normal": distribution.get("normal", 0),
-            "suspicious": distribution.get("suspicious", 0),
-            "high": distribution.get("high", 0),
-        },
-        "normal_vs_suspicious": [
-            {"label": "normal", "total": distribution.get("normal", 0)},
-            {
-                "label": "suspicious",
-                "total": distribution.get("suspicious", 0) + distribution.get("high", 0),
+        hour_map = {row["hour"]: row["total"] for row in hourly_rows if row["hour"] is not None}
+        transactions_per_hour = [
+            {"hour": f"{hour:02d}:00", "total": hour_map.get(f"{hour:02d}", 0)}
+            for hour in range(24)
+        ]
+        distribution = {row["alert_level"]: row["total"] for row in distribution_rows}
+        return {
+            "transactions_per_hour": transactions_per_hour,
+            "risk_distribution": {
+                "normal": distribution.get("normal", 0),
+                "suspicious": distribution.get("suspicious", 0),
+                "high": distribution.get("high", 0),
             },
-        ],
-    }
+            "normal_vs_suspicious": [
+                {"label": "normal", "total": distribution.get("normal", 0)},
+                {
+                    "label": "suspicious",
+                    "total": distribution.get("suspicious", 0) + distribution.get("high", 0),
+                },
+            ],
+        }
+    except sqlite3.Error as e:
+        logger.error(f"Database error while fetching dashboard charts: {e}", exc_info=True)
+        raise
